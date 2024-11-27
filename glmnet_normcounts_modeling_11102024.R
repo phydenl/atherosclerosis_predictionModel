@@ -7,7 +7,9 @@ library(glmnet)
 library(dplyr)
 library(readr)
 
-setwd("E:/Atherosclerosis_predictionModel_2024")
+
+###change to your downloads file path + working directory 
+setwd("E:/Atherosclerosis_predictionModel_2024") 
 
 normcounts <- read_tsv("C:/Users/phyde/Downloads/GSE221615_normalizedCounts.tsv")
 metadata <- read.csv("E:/Atherosclerosis_predictionModel_2024/GSE221615_trainingData/metadata_GSE221615.csv")
