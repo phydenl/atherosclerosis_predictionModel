@@ -87,7 +87,7 @@ total_trainingdata_geneExpression <- as.data.frame(t(total_trainingdata_geneExpr
 total_trainingdata <- total_trainingdata[order(match(total_trainingdata$Library.Name, rownames(total_trainingdata_geneExpression))), ]
 total_trainingdata_geneExpression$numeric_sex <- NA
 total_trainingdata_geneExpression$numeric_sex <- total_trainingdata$numeric_sex
-
+total_trainingdata_geneExpression$age <- total_trainingdata$Age
 
 
 #### getting lambda multinomial regression from cv.glmnet
@@ -96,18 +96,18 @@ set.seed(42)
 pesa_score_responseVariable <- total_trainingdata$pesa_score
 matrix_total_trainingdata_geneExpression <- as.matrix(total_trainingdata_geneExpression)
 
-cv_fit_trainingdata_withsex <- cv.glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, family = "multinomial", nfolds=5)
-###lambda.min = 0.08293784
-cv_fit_trainingdata_withsex$lambda.min
-predict(cv_fit_trainingdata_withsex, s =cv_fit_trainingdata_withsex$lambda.min, type = "nonzero")
-withsex_min_lambda <- cv_fit_trainingdata_withsex$lambda.min
-non_zero_coefs <- coef(cv_fit_trainingdata_withsex, s =withsex_min_lambda )
+cv_fit_trainingdata_w_clinicalfactors <- cv.glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, family = "multinomial", nfolds=5)
+
+cv_fit_trainingdata_w_clinicalfactors$lambda.min
+predict(cv_fit_trainingdata_w_clinicalfactors, s =cv_fit_trainingdata_w_clinicalfactors$lambda.min, type = "nonzero")
+withsex_min_lambda <- cv_fit_trainingdata_w_clinicalfactors$lambda.min
+non_zero_coefs <- coef(cv_fit_trainingdata_w_clinicalfactors, s =withsex_min_lambda )
 #non_zero_genes <- colnames(matrix_total_trainingdata_geneExpression)[which(non_zero_coefs != 0)]
 non_zero_coefs_generalized <- non_zero_coefs$Generalized
 dimnames(non_zero_coefs_generalized)[[1]]
 non_zero_coefs_generalized@x
 
-plot(cv_fit_trainingdata_withsex)
+plot(cv_fit_trainingdata_w_clinicalfactors)
 
 #row_indicies <- row(non_zero_coefs_generalized)[non_zero_coefs_generalized != 0]
 #tmp_coeffs <- coef(cv.glmnet.fit, s = "lambda.min")
@@ -122,26 +122,26 @@ write.csv(non_zero_focal_trainingdata, "GSE221615_trainingdata_nonzerocoef_focal
 write.csv(non_zero_control_trainingdata, "GSE221615_trainingdata_nonzerocoef_control_withsex.csv")
 
 
-total_trainingdata_geneexpression_nosex <- total_trainingdata_geneExpression %>% select(-"numeric_sex")
+total_trainingdata_geneexpression_no_clinical <- total_trainingdata_geneExpression %>% select(-"numeric_sex") %>% select(-"age") %>% select(-"pesa_score")
 set.seed(42)
-total_trainingdata_geneexpression_nosex <- as.matrix(total_trainingdata_geneexpression_nosex)
-cv_fit_trainingdata_withoutsex <- cv.glmnet(total_trainingdata_geneexpression_nosex, pesa_score_responseVariable, family = "multinomial", nfolds = 5)
+total_trainingdata_geneexpression_no_clinical_matrix <- as.matrix(total_trainingdata_geneexpression_no_clinical)
+total_trainingdata_geneexpression_no_clinical_cvfit <- cv.glmnet(total_trainingdata_geneexpression_no_clinical_matrix, pesa_score_responseVariable, family = "multinomial", nfolds = 5)
 
-min_lambda <- cv_fit_trainingdata_withoutsex$lambda.min
-plot(cv_fit_trainingdata_withoutsex)
-fit_withsex <- glmnet(as.matrix(total_trainingdata_geneExpression), pesa_score_responseVariable, lambda = min_lambda, family = "multinomial")
+min_lambda <- total_trainingdata_geneexpression_no_clinical_cvfit$lambda.min
+plot(total_trainingdata_geneexpression_no_clinical_cvfit)
+fit_nofactors <- glmnet(total_trainingdata_geneexpression_no_clinical_matrix, pesa_score_responseVariable, lambda = min_lambda, family = "multinomial")
 
-fit_withsex_generalized <- data.frame(name = fit_withsex$beta$Generalized@Dimnames[[1]][fit_withsex$beta$Generalized@i + 1], coefficient = fit_withsex$beta$Generalized@x)
-fit_withsex_intermediate<- data.frame(name = fit_withsex$beta$Intermediate@Dimnames[[1]][fit_withsex$beta$Intermediate@i + 1], coefficient = fit_withsex$beta$Intermediate@x)
-fit_withsex_control <- data.frame(name = fit_withsex$beta$No@Dimnames[[1]][fit_withsex$beta$No@i + 1], coefficient = fit_withsex$beta$No@x)
-fit_withsex_focal <- data.frame(name =  fit_withsex$beta$Focal@Dimnames[[1]][fit_withsex$beta$Focal@i + 1], coefficient = fit_withsex$beta$Focal@x)
+fit_nofactors_generalized <- data.frame(name = fit_nofactors$beta$Generalized@Dimnames[[1]][fit_nofactors$beta$Generalized@i + 1], coefficient = fit_nofactors$beta$Generalized@x)
+fit_nofactors_intermediate<- data.frame(name = fit_nofactors$beta$Intermediate@Dimnames[[1]][fit_nofactors$beta$Intermediate@i + 1], coefficient = fit_nofactors$beta$Intermediate@x)
+fit_nofactors_control <- data.frame(name = fit_nofactors$beta$No@Dimnames[[1]][fit_nofactors$beta$No@i + 1], coefficient = fit_nofactors$beta$No@x)
+fit_nofactors_focal <- data.frame(name =  fit_nofactors$beta$Focal@Dimnames[[1]][fit_nofactors$beta$Focal@i + 1], coefficient = fit_nofactors$beta$Focal@x)
 
-write.csv(fit_withsex_control, "GSE221615_trainingdata_nonzerocoef_control_withoutsex.csv")
-write.csv(fit_withsex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withoutsex.csv")
+write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_control_withoutsex.csv")
+write.csv(fit_nosex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withoutsex.csv")
 
 
 ############relaxed lasso 
-fit_withsex <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
+fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
 ##dimension error 
 dim(matrix_total_trainingdata_geneExpression)
 length(pesa_score_responseVariable)
@@ -149,8 +149,8 @@ levels(pesa_score_responseVariable) #### pesa-score is treated as "NULL", use as
 pesa_score_responseVariable <- as.factor(pesa_score_responseVariable)
 levels(pesa_score_responseVariable)
 ##should be fixed
-fit_withsex <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
-fit_withsex <- glmnet(matrix_total_trainingdata_geneExpression, 
+fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
+fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, 
                       pesa_score_responseVariable, 
                       family = "multinomial", 
                       maxit = 200000, 
@@ -220,3 +220,4 @@ write.csv(fit_nosex_intermediate, "GSE221615_trainingdata_nonzerocoef_intermedia
 write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_focal_nosex_relaxedlasso.csv")
 write.csv(fit_nosex_focal, "GSE221615_trainingdata_nonzerocoef_control_nosex_relaxedlasso.csv")
 
+write.csv(total_trainingdata_geneExpression, "GSE221615_trainingdata_for_stepwiseRegression.csv")
