@@ -5,27 +5,36 @@
 ###build regression model with selected genes + sex + age 
 library(glmnet)
 library(dplyr)
+library(readr)
 
 setwd("E:/Atherosclerosis_predictionModel_2024")
 
+normcounts <- read_tsv("C:/Users/phyde/Downloads/GSE221615_normalizedCounts.tsv")
+metadata <- read.csv("E:/Atherosclerosis_predictionModel_2024/GSE221615_trainingData/metadata_GSE221615.csv")
+suaz <- read.csv("C:/Users/phyde/Downloads/SUAZ_to_GSM_sampleID - Sheet1.csv", header = F)
+
+
 set.seed(42) ###did this before sample aka randomly selecting IDs from dataset 
 
-normcounts <- GSE221615_normalizedCounts
-colnames(normcounts)[3:length(colnames(normcounts))] <- SUAZ_to_GSM_sampleID...Sheet1$V1
+colnames(normcounts)[3:length(colnames(normcounts))] <- suaz$V1
 
 #####seperating dataset into male and female samples 
 female_dataset <- normcounts[, 1:2]
 male_dataset <- normcounts[,1:2]
 
 
-female_metadata <- metadata_GSE221615[metadata_GSE221615$gender == "female", ]
-male_metadata <- metadata_GSE221615[metadata_GSE221615$gender == "male", ]
+female_metadata <- metadata[metadata$gender == "female", ]
+male_metadata <- metadata[metadata$gender == "male", ]
 
 colnames(normcounts)
 
-female_dataset[, 3: 30] <- normcounts[, colnames(normcounts) %in% female_metadata$Library.Name ]
-female_dataset <- female_dataset %>% select(-"GSM6890328.1")
-male_dataset[3:366] <- normcounts[, colnames(normcounts) %in% male_metadata$Library.Name]
+female_dataset <- normcounts[, colnames(normcounts) %in% female_metadata$Library.Name ]
+female_dataset$ens_gene <- normcounts$ens_gene
+female_dataset <- female_dataset %>% select(ens_gene, everything())
+male_dataset <- normcounts[, colnames(normcounts) %in% male_metadata$Library.Name]
+male_dataset$ens_gene <- normcounts$ens_gene
+male_dataset <- male_dataset %>% select(ens_gene, everything())
+
 all(male_metadata$Library.Name %in% colnames(male_dataset)) ## true
 all(female_metadata$Library.Name %in% colnames(female_dataset)) ## true
 
@@ -54,8 +63,8 @@ female_geneExpression_trainingdata <- normcounts[, colnames(normcounts) %in% fem
 # write.csv(female_geneExpression_trainingdata, "normcounts_GSE221615_femaleTrainingData_geneExpression.csv")
 
 ## making ens_gene the rownames for female and male gene expression training dataset
-rownames(female_geneExpression_trainingdata) <- normcounts$ens_gene
-rownames(male_geneExpression_trainingdata) <- normcounts$ens_gene
+##rownames(female_geneExpression_trainingdata) <- normcounts$ens_gene
+##rownames(male_geneExpression_trainingdata) <- normcounts$ens_gene
 
 ## making genes as columns and sample IDs as rownames using t() function 
 # matrix_female_geneExpression_trainingdata <- t(female_geneExpression_trainingdata)
@@ -75,8 +84,8 @@ rownames(male_geneExpression_trainingdata) <- normcounts$ens_gene
 
 
 
-total_trainingdata <- metadata_GSE221615[metadata_GSE221615$Library.Name %in% female_training_metadata$Library.Name | 
-                                           metadata_GSE221615$Library.Name %in% male_training_metadata$Library.Name, ]
+total_trainingdata <- metadata[metadata$Library.Name %in% female_training_metadata$Library.Name | 
+                                 metadata$Library.Name %in% male_training_metadata$Library.Name, ]
 
 total_trainingdata_geneExpression <- normcounts[, colnames(normcounts) %in% total_trainingdata$Library.Name, ]
 total_trainingdata$numeric_sex <- total_trainingdata$gender
@@ -116,13 +125,13 @@ non_zero_intermediate_trainingdata<- data.frame(name = non_zero_coefs$Intermedia
 non_zero_control_trainingdata <- data.frame(name = non_zero_coefs$No@Dimnames[[1]][non_zero_coefs$No@i + 1], coefficient = non_zero_coefs$No@x)
 non_zero_focal_trainingdata <- data.frame(name = non_zero_coefs$Focal@Dimnames[[1]][non_zero_coefs$Focal@i + 1], coefficient = non_zero_coefs$Focal@x)
 
-write.csv(non_zero_generalized_trainingdata, "GSE221615_trainingdata_nonzerocoef_generalized_withsex.csv")
-write.csv(non_zero_intermediate_trainingdata, "GSE221615_trainingdata_nonzerocoef_intermediate_withsex.csv")
-write.csv(non_zero_focal_trainingdata, "GSE221615_trainingdata_nonzerocoef_focal_withsex.csv")
-write.csv(non_zero_control_trainingdata, "GSE221615_trainingdata_nonzerocoef_control_withsex.csv")
+# write.csv(non_zero_generalized_trainingdata, "GSE221615_trainingdata_nonzerocoef_generalized_withsex.csv")
+# write.csv(non_zero_intermediate_trainingdata, "GSE221615_trainingdata_nonzerocoef_intermediate_withsex.csv")
+# write.csv(non_zero_focal_trainingdata, "GSE221615_trainingdata_nonzerocoef_focal_withsex.csv")
+# write.csv(non_zero_control_trainingdata, "GSE221615_trainingdata_nonzerocoef_control_withsex.csv")
 
 
-total_trainingdata_geneexpression_no_clinical <- total_trainingdata_geneExpression %>% select(-"numeric_sex") %>% select(-"age") %>% select(-"pesa_score")
+total_trainingdata_geneexpression_no_clinical <- total_trainingdata_geneExpression %>% select(-"numeric_sex")
 set.seed(42)
 total_trainingdata_geneexpression_no_clinical_matrix <- as.matrix(total_trainingdata_geneexpression_no_clinical)
 total_trainingdata_geneexpression_no_clinical_cvfit <- cv.glmnet(total_trainingdata_geneexpression_no_clinical_matrix, pesa_score_responseVariable, family = "multinomial", nfolds = 5)
@@ -136,88 +145,95 @@ fit_nofactors_intermediate<- data.frame(name = fit_nofactors$beta$Intermediate@D
 fit_nofactors_control <- data.frame(name = fit_nofactors$beta$No@Dimnames[[1]][fit_nofactors$beta$No@i + 1], coefficient = fit_nofactors$beta$No@x)
 fit_nofactors_focal <- data.frame(name =  fit_nofactors$beta$Focal@Dimnames[[1]][fit_nofactors$beta$Focal@i + 1], coefficient = fit_nofactors$beta$Focal@x)
 
-write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_control_withoutsex.csv")
-write.csv(fit_nosex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withoutsex.csv")
+# write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_control_withoutsex.csv")
+# write.csv(fit_nosex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withoutsex.csv")
 
 
-############relaxed lasso 
-fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
-##dimension error 
-dim(matrix_total_trainingdata_geneExpression)
-length(pesa_score_responseVariable)
-levels(pesa_score_responseVariable) #### pesa-score is treated as "NULL", use as.factor 
-pesa_score_responseVariable <- as.factor(pesa_score_responseVariable)
-levels(pesa_score_responseVariable)
-##should be fixed
-fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
-fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, 
-                      pesa_score_responseVariable, 
-                      family = "multinomial", 
-                      maxit = 200000, 
-                      relax = TRUE)
-
-str(pesa_score_responseVariable)
-fit_withsex <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
-dim(matrix_total_trainingdata_geneExpression)
-length(pesa_score_responseVariable)
-# Scale the data if needed
-scaled_matrix_total_trainingdata_geneExpression <- scale(matrix_total_trainingdata_geneExpression)
-fit_withsex <- glmnet(scaled_matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial", maxit = 1000000)
-pesa_score_response <- as.factor(pesa_score_responseVariable)
-unique(levels(pesa_score_response))
-any(is.na(pesa_score_response))
-any(is.na(pesa_score_responseVariable))
-any(is.na(matrix_total_trainingdata_geneExpression))
-
-fit_withsex_relaxed <- glmnet(matrix_total_trainingdata_geneExpression, 
-                      pesa_score_responseVariable, 
-                      family = "multinomial", 
-                      relax = TRUE, 
-                      maxit = 200000, 
-                      lambda = 0.0001)
-
-fit_withsexrelaxed_generalized <- data.frame(name = fit_withsex_relaxed$beta$Generalized@Dimnames[[1]][fit_withsex_relaxed$beta$Generalized@i + 1], 
-                                             coefficient = fit_withsex_relaxed$beta$Generalized@x)
-fit_withsexrelaxed_intermediate<- data.frame(name = fit_withsex_relaxed$beta$Intermediate@Dimnames[[1]][fit_withsex_relaxed$beta$Intermediate@i + 1], coefficient = fit_withsex_relaxed$beta$Intermediate@x)
-fit_withsexrelaxed_control <- data.frame(name = fit_withsex_relaxed$beta$No@Dimnames[[1]][fit_withsex_relaxed$beta$No@i + 1], coefficient = fit_withsex_relaxed$beta$No@x)
-fit_withsexrelaxed_focal <- data.frame(name =  fit_withsex_relaxed$beta$Focal@Dimnames[[1]][fit_withsex_relaxed$beta$Focal@i + 1], coefficient = fit_withsex_relaxed$beta$Focal@x)
+############relaxed lasso
 
 
-fit_withoutsex_relaxed <- cv.glmnet(total_trainingdata_geneexpression_nosex, 
-                                 pesa_score_responseVariable, 
-                                 family = "multinomial", 
-                                 relax = TRUE, 
-                                 gamma = 0,
-                                 maxp=150, 
-                                 path = T)
-plot(fit_withoutsex_relaxed)
+#########################################
+###     RELAXED LASSO NOT WORKING!    ##
+#########################################
+# 
+# fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
+# ##dimension error 
+# dim(matrix_total_trainingdata_geneExpression)
+# length(pesa_score_responseVariable)
+# levels(pesa_score_responseVariable) #### pesa-score is treated as "NULL", use as.factor 
+# pesa_score_responseVariable <- as.factor(pesa_score_responseVariable)
+# levels(pesa_score_responseVariable)
+# ##should be fixed
+# fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
+# fit_w_clinicalfactors <- glmnet(matrix_total_trainingdata_geneExpression, 
+#                       pesa_score_responseVariable, 
+#                       family = "multinomial", 
+#                       maxit = 200000, 
+#                       relax = TRUE)
+# 
+# str(pesa_score_responseVariable)
+# fit_withsex <- glmnet(matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial")
+# dim(matrix_total_trainingdata_geneExpression)
+# length(pesa_score_responseVariable)
+# # Scale the data if needed
+# scaled_matrix_total_trainingdata_geneExpression <- scale(matrix_total_trainingdata_geneExpression)
+# fit_withsex <- glmnet(scaled_matrix_total_trainingdata_geneExpression, pesa_score_responseVariable, relax = T, family = "multinomial", maxit = 1000000)
+# pesa_score_response <- as.factor(pesa_score_responseVariable)
+# unique(levels(pesa_score_response))
+# any(is.na(pesa_score_response))
+# any(is.na(pesa_score_responseVariable))
+# any(is.na(matrix_total_trainingdata_geneExpression))
+# 
+# fit_withsex_relaxed <- glmnet(matrix_total_trainingdata_geneExpression, 
+#                       pesa_score_responseVariable, 
+#                       family = "multinomial", 
+#                       relax = TRUE, 
+#                       maxit = 200000, 
+#                       lambda = 0.0001)
+# 
+# fit_withsexrelaxed_generalized <- data.frame(name = fit_withsex_relaxed$beta$Generalized@Dimnames[[1]][fit_withsex_relaxed$beta$Generalized@i + 1], 
+#                                              coefficient = fit_withsex_relaxed$beta$Generalized@x)
+# fit_withsexrelaxed_intermediate<- data.frame(name = fit_withsex_relaxed$beta$Intermediate@Dimnames[[1]][fit_withsex_relaxed$beta$Intermediate@i + 1], coefficient = fit_withsex_relaxed$beta$Intermediate@x)
+# fit_withsexrelaxed_control <- data.frame(name = fit_withsex_relaxed$beta$No@Dimnames[[1]][fit_withsex_relaxed$beta$No@i + 1], coefficient = fit_withsex_relaxed$beta$No@x)
+# fit_withsexrelaxed_focal <- data.frame(name =  fit_withsex_relaxed$beta$Focal@Dimnames[[1]][fit_withsex_relaxed$beta$Focal@i + 1], coefficient = fit_withsex_relaxed$beta$Focal@x)
+# 
+# 
+# fit_withoutsex_relaxed <- cv.glmnet(total_trainingdata_geneexpression_nosex, 
+#                                  pesa_score_responseVariable, 
+#                                  family = "multinomial", 
+#                                  relax = TRUE, 
+#                                  gamma = 0,
+#                                  maxp=150, 
+#                                  path = T)
+# plot(fit_withoutsex_relaxed)
+# 
+# coef_matrix <- coef(fit_withoutsex_relaxed)
+# 
+# # Extract non-zero coefficients
+# non_zero_coefs <- coef_matrix[, length(fit_withoutsex_relaxed$lambda)]  # for the final lambda
+# non_zero_coefs <- non_zero_coefs[non_zero_coefs != 0]  # filter out zeros
+# fit_withoutsex_relaxed$
+# fit_nosex_generalized <- data.frame(name = fit_withoutsex_relaxed$beta$Generalized@Dimnames[[1]][fit_withoutsex_relaxed$beta$Generalized@i + 1], 
+#                                     coefficient = fit_withoutsex_relaxed$beta$Generalized@x)
+# fit_nosex_intermediate<- data.frame(name = fit_withoutsex_relaxed$beta$Intermediate@Dimnames[[1]][fit_withoutsex_relaxed$beta$Intermediate@i + 1], 
+#                                     coefficient = fit_withoutsex_relaxed$beta$Intermediate@x)
+# fit_nosex_control <- data.frame(name = fit_withoutsex_relaxed$beta$No@Dimnames[[1]][fit_withoutsex_relaxed$beta$No@i + 1], 
+#                                 coefficient = fit_withoutsex_relaxed$beta$No@x)
+# fit_nosex_focal <- data.frame(name =  fit_withoutsex_relaxed$beta$Focal@Dimnames[[1]][fit_withoutsex_relaxed$beta$Focal@i + 1], 
+#                               coefficient = fit_withoutsex_relaxed$beta$Focal@x)
 
-coef_matrix <- coef(fit_withoutsex_relaxed)
 
-# Extract non-zero coefficients
-non_zero_coefs <- coef_matrix[, length(fit_withoutsex_relaxed$lambda)]  # for the final lambda
-non_zero_coefs <- non_zero_coefs[non_zero_coefs != 0]  # filter out zeros
-fit_withoutsex_relaxed$
-fit_nosex_generalized <- data.frame(name = fit_withoutsex_relaxed$beta$Generalized@Dimnames[[1]][fit_withoutsex_relaxed$beta$Generalized@i + 1], 
-                                    coefficient = fit_withoutsex_relaxed$beta$Generalized@x)
-fit_nosex_intermediate<- data.frame(name = fit_withoutsex_relaxed$beta$Intermediate@Dimnames[[1]][fit_withoutsex_relaxed$beta$Intermediate@i + 1], 
-                                    coefficient = fit_withoutsex_relaxed$beta$Intermediate@x)
-fit_nosex_control <- data.frame(name = fit_withoutsex_relaxed$beta$No@Dimnames[[1]][fit_withoutsex_relaxed$beta$No@i + 1], 
-                                coefficient = fit_withoutsex_relaxed$beta$No@x)
-fit_nosex_focal <- data.frame(name =  fit_withoutsex_relaxed$beta$Focal@Dimnames[[1]][fit_withoutsex_relaxed$beta$Focal@i + 1], 
-                              coefficient = fit_withoutsex_relaxed$beta$Focal@x)
-
-
-write.csv(fit_withsexrelaxed_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withsex_relaxedlasso.csv")
-write.csv(fit_withsexrelaxed_intermediate, "GSE221615_trainingdata_nonzerocoef_intermediate_withsex_relaxedlasso.csv")
-write.csv(fit_withsexrelaxed_control, "GSE221615_trainingdata_nonzerocoef_focal_withsex_relaxedlasso.csv")
-write.csv(fit_withsexrelaxed_focal, "GSE221615_trainingdata_nonzerocoef_control_withsex_relaxedlasso.csv")
-
-
-
-write.csv(fit_nosex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_nosex_relaxedlasso.csv")
-write.csv(fit_nosex_intermediate, "GSE221615_trainingdata_nonzerocoef_intermediate_nosex_relaxedlasso.csv")
-write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_focal_nosex_relaxedlasso.csv")
-write.csv(fit_nosex_focal, "GSE221615_trainingdata_nonzerocoef_control_nosex_relaxedlasso.csv")
-
-write.csv(total_trainingdata_geneExpression, "GSE221615_trainingdata_for_stepwiseRegression.csv")
+# write.csv(fit_withsexrelaxed_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_withsex_relaxedlasso.csv")
+# write.csv(fit_withsexrelaxed_intermediate, "GSE221615_trainingdata_nonzerocoef_intermediate_withsex_relaxedlasso.csv")
+# write.csv(fit_withsexrelaxed_control, "GSE221615_trainingdata_nonzerocoef_focal_withsex_relaxedlasso.csv")
+# write.csv(fit_withsexrelaxed_focal, "GSE221615_trainingdata_nonzerocoef_control_withsex_relaxedlasso.csv")
+# 
+# 
+# 
+# write.csv(fit_nosex_generalized, "GSE221615_trainingdata_nonzerocoef_generalized_nosex_relaxedlasso.csv")
+# write.csv(fit_nosex_intermediate, "GSE221615_trainingdata_nonzerocoef_intermediate_nosex_relaxedlasso.csv")
+# write.csv(fit_nosex_control, "GSE221615_trainingdata_nonzerocoef_focal_nosex_relaxedlasso.csv")
+# write.csv(fit_nosex_focal, "GSE221615_trainingdata_nonzerocoef_control_nosex_relaxedlasso.csv")
+# 
+# write.csv(total_trainingdata_geneExpression, "GSE221615_trainingdata_for_stepwiseRegression.csv")
+# write.csv(total_trainingdata, "GSE221615_trainingdata_metadata.csv")
